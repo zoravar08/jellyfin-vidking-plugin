@@ -47,7 +47,7 @@ echo ""
 echo "--- Computing SHA256 + updating manifest ---"
 CHECKSUM=$(sha256sum "$ZIP" | awk '{print $1}')
 ZIP_NAME="${PLUGIN_NAME}_$VERSION"
-DOWNLOAD_URL="https://github.com/USER/jellyfin-vidking-plugin/releases/download/v${VERSION}/${ZIP_NAME}.zip"
+DOWNLOAD_URL="https://github.com/zoravar08/jellyfin-vidking-plugin/releases/download/v${VERSION}/${ZIP_NAME}.zip"
 echo "ZIP:      $ZIP"
 echo "SHA256:   $CHECKSUM"
 echo "Download: $DOWNLOAD_URL"

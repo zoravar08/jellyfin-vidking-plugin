@@ -38,7 +38,7 @@ sudo systemctl restart jellyfin
 ### From source
 
 ```bash
-git clone https://github.com/USER/jellyfin-vidking-plugin.git
+git clone https://github.com/zoravar08/jellyfin-vidking-plugin.git
 cd jellyfin-vidking-plugin
 
 # Build
@@ -59,9 +59,9 @@ sudo systemctl restart jellyfin
 
 This is the easiest way for others to install and auto-update the plugin.
 
-1. **Push the repo to GitHub** (replace `USER` with your GitHub username):
+1. **Push the repo to GitHub**:
    ```bash
-   git remote add origin https://github.com/USER/jellyfin-vidking-plugin.git
+   git remote add origin https://github.com/zoravar08/jellyfin-vidking-plugin.git
    git push -u origin main
    ```
 
@@ -85,7 +85,7 @@ This is the easiest way for others to install and auto-update the plugin.
 
 4. **Users install** by pasting this URL into Jellyfin:
    **Dashboard → Plugins → Repositories → Add**  
-   `https://raw.githubusercontent.com/USER/jellyfin-vidking-plugin/main/manifest.json`
+   `https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/main/manifest.json`
 
    Then restart Jellyfin. The plugin appears in the Catalog and updates
    automatically when new releases are tagged.

@@ -1,7 +1,7 @@
 # Jellyfin VidKing Link Monitor
 
 Standalone companion tool for the
-[Jellyfin VidKing Integration plugin](https://github.com/USER/jellyfin-vidking-plugin).
+[Jellyfin VidKing Integration plugin](https://github.com/zoravar08/jellyfin-vidking-plugin).
 Probes all `.vking` items' ShortcutPath URLs for validity, tracks URL changes,
 and sends Telegram alerts on failure.
 
@@ -30,7 +30,7 @@ alongside the installed plugin.
 ### Automatic (install script)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/USER/jellyfin-vidking-plugin/main/monitor/install.sh | sudo bash
+curl -sL https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/main/monitor/install.sh | sudo bash
 ```
 
 Then edit the config:
