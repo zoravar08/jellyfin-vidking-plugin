@@ -44,6 +44,32 @@ cd "$BUILD_DIR"
 zip -q -r "$ZIP" .
 echo "Created: $ZIP ($(du -h "$ZIP" | cut -f1))"
 echo ""
+echo "--- Computing SHA256 + updating manifest ---"
+CHECKSUM=$(sha256sum "$ZIP" | awk '{print $1}')
+ZIP_NAME="${PLUGIN_NAME}_$VERSION"
+DOWNLOAD_URL="https://github.com/USER/jellyfin-vidking-plugin/releases/download/v${VERSION}/${ZIP_NAME}.zip"
+echo "ZIP:      $ZIP"
+echo "SHA256:   $CHECKSUM"
+echo "Download: $DOWNLOAD_URL"
+
+"$PYTHON" -c "
+import json
+
+with open('$SCRIPT_DIR/../manifest.json') as f:
+    manifest = json.load(f)
+
+for plugin in manifest:
+    for ver in plugin['versions']:
+        ver['sourceUrl'] = '$DOWNLOAD_URL'
+        ver['checksum'] = '$CHECKSUM'
+
+with open('$SCRIPT_DIR/../manifest.json', 'w') as f:
+    json.dump(manifest, f, indent=1)
+    f.write('\n')
+print('manifest.json updated')
+"
+
+echo ""
 echo "=== Build complete ==="
 echo "Files:"
 ls -la "$BUILD_DIR/"

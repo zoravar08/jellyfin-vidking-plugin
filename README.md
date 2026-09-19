@@ -53,6 +53,60 @@ sudo chown -R jellyfin:jellyfin "/var/lib/jellyfin/plugins/VidKing_${VERSION}"
 sudo systemctl restart jellyfin
 ```
 
+## Plugin Repository
+
+### Third-party repository (auto-install from Jellyfin Catalog)
+
+This is the easiest way for others to install and auto-update the plugin.
+
+1. **Push the repo to GitHub** (replace `USER` with your GitHub username):
+   ```bash
+   git remote add origin https://github.com/USER/jellyfin-vidking-plugin.git
+   git push -u origin main
+   ```
+
+2. **Create a release** on GitHub — tag it `v1.0.0.0` and attach the ZIP:
+   ```bash
+   git tag v1.0.0.0
+   git push origin v1.0.0.0
+   ```
+   The ZIP must be named `Jellyfin.Plugin.VidKing_1.0.0.0.zip` and uploaded to
+   the release. The CI workflow (`.github/workflows/build.yml`) builds and uploads
+   it automatically when you create a GitHub Release.
+
+3. **Update the manifest checksum** — and `sourceUrl` in `manifest.json`:
+   ```bash
+   bash scripts/build.sh
+   git add manifest.json
+   git commit -m "update manifest checksum"
+   git push
+   ```
+   The build script computes the SHA256 and writes it into `manifest.json`.
+
+4. **Users install** by pasting this URL into Jellyfin:
+   **Dashboard → Plugins → Repositories → Add**  
+   `https://raw.githubusercontent.com/USER/jellyfin-vidking-plugin/main/manifest.json`
+
+   Then restart Jellyfin. The plugin appears in the Catalog alongside official
+   plugins and updates automatically when new releases are tagged.
+
+### Official Jellyfin plugin marketplace
+
+The built-in Jellyfin plugin catalog only lists plugins under the `jellyfin`
+GitHub organization. To get listed there:
+
+1. Open a thread on the [Jellyfin forum](https://forum.jellyfin.org/)  
+   explaining what the plugin does and why it belongs in the official offering.
+2. If accepted, the Jellyfin team will move your repo into the `jellyfin` org.
+3. The CI workflow must be updated to publish to the official release bucket
+   (`repo.jellyfin.org/releases/plugin/...`) — this requires Jellyfin team
+   coordination.
+
+Until then, the third-party repository (above) is the recommended distribution
+path for most plugins.
+
+See also: [Jellyfin Plugin Docs — 3rd-Party Repositories](https://jellyfin.org/docs/general/server/plugins/#3rd-party-plugin-repositories)
+
 ## The Monitor (companion tool)
 
 A separate Python tool that probes all extracted `.vking` URLs for validity,
