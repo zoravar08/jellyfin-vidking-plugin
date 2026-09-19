@@ -23,6 +23,8 @@ monitor/monitor.log
 monitor/monitor_state.db
 monitor/1embed_cookies.json
 
+# Build output
+scripts/build/
 # Release packages
 *.zip
 release/
