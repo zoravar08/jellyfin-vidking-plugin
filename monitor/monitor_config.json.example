@@ -1,0 +1,8 @@
+{
+  "_comment": "VKing Link Monitor config template — copy to monitor_config.json and fill in your credentials",
+  "_comment2": "Get bot_token from @BotFather on Telegram; chat_id from @userinfobot or any message you sent to your bot",
+  "bot_token": "5347967691:YOUR_BOT_TOKEN_HERE",
+  "chat_id": "YOUR_CHAT_ID_HERE",
+  "probe_timeout": 15,
+  "enable_telegram": true
+}

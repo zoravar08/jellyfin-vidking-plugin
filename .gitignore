@@ -1,0 +1,41 @@
+# Built artifacts
+bin/
+obj/
+src/bin/
+src/obj/
+src/SelfCheck/bin/
+src/SelfCheck/obj/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+/tmp/playwright-venv/
+
+# Playwright browsers (heavy, user-specific)
+/home/ubuntu/.cache/ms-playwright/
+
+# Monitor runtime data
+monitor/monitor.log
+monitor/monitor_state.db
+monitor/1embed_cookies.json
+
+# Release packages
+*.zip
+release/
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deployment staging
+deploy/

@@ -1,0 +1,14 @@
+{
+    "guid": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "name": "VidKing Integration",
+    "description": "Dynamic remote stream resolution for VidKing sources. Optional Playwright-based extraction of real MP4 URLs from 1Embed.cc for native Jellyfin playback.",
+    "overview": "Resolves .vking files (TMDb/IMDb ID pointers) into Jellyfin media items. Tier 1: optional real MP4 extraction via headless Chromium. Tier 2: stream proxy endpoint for web clients. Tier 3: iframe fallback.",
+    "owner": "local",
+    "category": "General",
+    "version": "1.0.0.0",
+    "targetAbi": "10.11.0.0",
+    "framework": "net9.0",
+    "status": "Active",
+    "autoUpdate": false,
+    "timestamp": "2026-09-20T03:00:00Z"
+}

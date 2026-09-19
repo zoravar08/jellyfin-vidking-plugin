@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>VidKing</title>
+</head>
+<body>
+<div id="VidKingConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-require="emby-input,emby-button">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="VidKingConfigForm">
+                <div class="sectionTitleContainer flex align-items-center">
+                    <h2 class="sectionTitle">VidKing Integration</h2>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="MovieBaseUrl">Movie base URL</label>
+                    <input id="MovieBaseUrl" name="MovieBaseUrl" type="url" is="emby-input" />
+                    <div class="fieldDescription">
+                        Movies resolve to &lt;base&gt;/embed/movie/&lt;id&gt;. Leave blank to disable movie
+                        .vking files.
+                    </div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="TvBaseUrl">TV base URL</label>
+                    <input id="TvBaseUrl" name="TvBaseUrl" type="url" is="emby-input" />
+                    <div class="fieldDescription">
+                        Episodes resolve to &lt;base&gt;/embed/tv/&lt;id&gt;/&lt;season&gt;/&lt;episode&gt;.
+                        Leave blank to disable episode .vking files.
+                    </div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ApiKey">API key</label>
+                    <input id="ApiKey" name="ApiKey" type="password" is="emby-input" />
+                    <div class="fieldDescription">Stored only; not sent anywhere yet.</div>
+                </div>
+
+                <div class="sectionTitleContainer flex align-items-center" style="margin-top:1.5em;">
+                    <h2 class="sectionTitle">Stream Extraction (Option B)</h2>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="checkboxContainer" style="display:flex;align-items:flex-start;gap:.75em;">
+                        <input id="EnableStreamExtraction" name="EnableStreamExtraction" type="checkbox" is="emby-input" />
+                        <span>
+                            <strong>Extract real MP4 stream URLs.</strong>
+                            <div class="fieldDescription" style="margin-top:.25em;">
+                                When enabled, the plugin uses a Playwright-based extractor to resolve
+                                .vking items to direct MP4 URLs (Option B) instead of HTML embed pages.
+                                This lets Jellyfin's own player handle playback natively — direct play,
+                                transcoding, cast, and download all work. Extraction requires
+                                VKingStreamExtractor.py deployed alongside the plugin DLL and
+                                Playwright + a headless browser available on the server.
+                                <br/><br/>
+                                Extraction may take 10-15 seconds per item during library scan.
+                                Failed extractions fall back to the iframe overlay (Tier 3) with no
+                                error to the user.
+                            </div>
+                        </span>
+                    </label>
+                </div>
+
+                <button is="emby-button" type="submit" class="raised button-submit block">
+                    <span>Save</span>
+                </button>
+                <div class="fieldDescription" style="margin-top:1em;">
+                    Changes apply to newly scanned items. Existing .vking items keep the URL
+                    stored when they were scanned until they are rescanned.
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d';
+            var page = document.querySelector('#VidKingConfigPage');
+            var form = page.querySelector('#VidKingConfigForm');
+
+            function field(name) {
+                return page.querySelector('#' + name);
+            }
+
+            function load() {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    field('MovieBaseUrl').value = config.MovieBaseUrl || '';
+                    field('TvBaseUrl').value = config.TvBaseUrl || '';
+                    field('ApiKey').value = config.ApiKey || '';
+                    field('EnableStreamExtraction').checked = !!config.EnableStreamExtraction;
+                    Dashboard.hideLoadingMsg();
+                }, function () {
+                    Dashboard.hideLoadingMsg();
+                });
+            }
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.MovieBaseUrl = field('MovieBaseUrl').value;
+                    config.TvBaseUrl = field('TvBaseUrl').value;
+                    config.ApiKey = field('ApiKey').value;
+                    config.EnableStreamExtraction = field('EnableStreamExtraction').checked;
+                    ApiClient.updatePluginConfiguration(pluginId, config)
+                        .then(Dashboard.processPluginConfigurationUpdateResult);
+                });
+                return false;
+            });
+
+            // 'pageshow' fires when the dashboard swaps this view in; the immediate call
+            // covers the first render, where the script runs after that event.
+            page.addEventListener('pageshow', load);
+            load();
+        })();
+    </script>
+</div>
+</body>
+</html>

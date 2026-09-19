@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>SelfCheck</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Jellyfin.Plugin.VidKing.csproj" />
+    <Reference Include="Emby.Naming"><HintPath>/usr/lib/jellyfin/bin/Emby.Naming.dll</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+
+  <!-- Copy the server assemblies locally so the plugin types can load outside Jellyfin. -->
+  <ItemGroup>
+    <Reference Include="MediaBrowser.Controller">
+      <HintPath>/usr/lib/jellyfin/bin/MediaBrowser.Controller.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Common">
+      <HintPath>/usr/lib/jellyfin/bin/MediaBrowser.Common.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Model">
+      <HintPath>/usr/lib/jellyfin/bin/MediaBrowser.Model.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Jellyfin.Data">
+      <HintPath>/usr/lib/jellyfin/bin/Jellyfin.Data.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Jellyfin.Database.Implementations">
+      <HintPath>/usr/lib/jellyfin/bin/Jellyfin.Database.Implementations.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.DependencyInjection.Abstractions">
+      <HintPath>/usr/lib/jellyfin/bin/Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions">
+      <HintPath>/usr/lib/jellyfin/bin/Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

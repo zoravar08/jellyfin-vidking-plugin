@@ -1,0 +1,78 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Jellyfin.Plugin.VidKing</AssemblyName>
+    <RootNamespace>Jellyfin.Plugin.VidKing</RootNamespace>
+    <Version>1.0.0.0</Version>
+    <NoWarn>$(NoWarn);CS1701;CS1702;CS1705</NoWarn>
+  </PropertyGroup>
+
+  <!-- Controller base types (ControllerBase, [ApiController], [Authorize]). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- Reference the running server's own assemblies (10.11.11) instead of NuGet:
+       guarantees ABI match with the installed Jellyfin. -->
+  <ItemGroup>
+    <Reference Include="MediaBrowser.Controller">
+      <HintPath>/usr/lib/jellyfin/bin/MediaBrowser.Controller.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Common">
+      <HintPath>/usr/lib/jellyfin/bin/MediaBrowser.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MediaBrowser.Model">
+      <HintPath>/usr/lib/jellyfin/bin/MediaBrowser.Model.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Jellyfin.Data">
+      <HintPath>/usr/lib/jellyfin/bin/Jellyfin.Data.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Jellyfin.Database.Implementations">
+      <HintPath>/usr/lib/jellyfin/bin/Jellyfin.Database.Implementations.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.DependencyInjection.Abstractions">
+      <HintPath>/usr/lib/jellyfin/bin/Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.Logging.Abstractions">
+      <HintPath>/usr/lib/jellyfin/bin/Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Extensions.Hosting.Abstractions">
+      <HintPath>/usr/lib/jellyfin/bin/Microsoft.Extensions.Hosting.Abstractions.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Emby.Naming">
+      <HintPath>/usr/lib/jellyfin/bin/Emby.Naming.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Microsoft.Data.Sqlite">
+      <HintPath>/usr/lib/jellyfin/bin/Microsoft.Data.Sqlite.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SelfCheck" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="SelfCheck/**" />
+    <EmbeddedResource Include="Configuration/configPage.html" />
+    <EmbeddedResource Include="Configuration/clientScript.js" />
+  </ItemGroup>
+
+  <!-- Playwright-based stream extractor script (Option B). Deployed next to the DLL. -->
+  <ItemGroup>
+    <None Include="VKingStreamExtractor.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

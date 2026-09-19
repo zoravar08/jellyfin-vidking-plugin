@@ -1,0 +1,70 @@
+# Jellyfin VidKing Integration — GitHub Actions CI Build
+# Builds the plugin DLL + packages it for release.
+# Requires .NET 10 SDK + Jellyfin server assemblies.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Jellyfin server (for build assemblies)
+        run: |
+          curl -fsSL https://repo.jellyfin.org/install-debian | sudo bash
+          sudo apt-get update
+          sudo apt-get install -y jellyfin-server
+
+      - name: Build plugin
+        run: |
+          cd src
+          dotnet build -c Release -o ../build
+
+      - name: Validate Python extractor syntax
+        run: |
+          python3 -m py_compile src/VKingStreamExtractor.py
+          echo "Python extractor syntax OK"
+
+      - name: Package release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          cp build/Jellyfin.Plugin.VidKing.dll release/
+          cp build/VKingStreamExtractor.py release/
+          cp src/meta.json release/
+          cd release
+          zip -q -r ../jellyfin-vidking-plugin-${VERSION}.zip .
+          cd ..
+          echo "Packaged: jellyfin-vidking-plugin-${VERSION}.zip"
+
+      - name: Upload release ZIP
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-vidking-plugin-${{ github.ref_name }}
+          path: jellyfin-vidking-plugin-${{ github.ref_name }}.zip
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Python syntax check
+        run: python3 -m py_compile src/VKingStreamExtractor.py && echo "OK"
+      - name: Shellcheck
+        run: |
+          which shellcheck || sudo apt-get install -y shellcheck
+          shellcheck scripts/build.sh monitor/install.sh || true
