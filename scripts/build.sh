@@ -52,22 +52,7 @@ echo "ZIP:      $ZIP"
 echo "SHA256:   $CHECKSUM"
 echo "Download: $DOWNLOAD_URL"
 
-"$PYTHON" -c "
-import json
-
-with open('$SCRIPT_DIR/../manifest.json') as f:
-    manifest = json.load(f)
-
-for plugin in manifest:
-    for ver in plugin['versions']:
-        ver['sourceUrl'] = '$DOWNLOAD_URL'
-        ver['checksum'] = '$CHECKSUM'
-
-with open('$SCRIPT_DIR/../manifest.json', 'w') as f:
-    json.dump(manifest, f, indent=1)
-    f.write('\n')
-print('manifest.json updated')
-"
+python3 "$SCRIPT_DIR/update_manifest.py" "$ZIP" "$DOWNLOAD_URL"
 
 echo ""
 echo "=== Build complete ==="
