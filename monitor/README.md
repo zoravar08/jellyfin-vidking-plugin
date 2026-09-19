@@ -1,6 +1,7 @@
 # Jellyfin VidKing Link Monitor
 
-Standalone companion tool for the [Jellyfin VidKing Integration plugin](https://github.com/USER/jellyfin-vidking-plugin).
+Standalone companion tool for the
+[Jellyfin VidKing Integration plugin](https://github.com/USER/jellyfin-vidking-plugin).
 Probes all `.vking` items' ShortcutPath URLs for validity, tracks URL changes,
 and sends Telegram alerts on failure.
 

@@ -22,6 +22,7 @@ venv/
 monitor/monitor.log
 monitor/monitor_state.db
 monitor/1embed_cookies.json
+monitor/monitor_config.json
 
 # Build output
 scripts/build/

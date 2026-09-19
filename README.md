@@ -87,25 +87,8 @@ This is the easiest way for others to install and auto-update the plugin.
    **Dashboard → Plugins → Repositories → Add**  
    `https://raw.githubusercontent.com/USER/jellyfin-vidking-plugin/main/manifest.json`
 
-   Then restart Jellyfin. The plugin appears in the Catalog alongside official
-   plugins and updates automatically when new releases are tagged.
-
-### Official Jellyfin plugin marketplace
-
-The built-in Jellyfin plugin catalog only lists plugins under the `jellyfin`
-GitHub organization. To get listed there:
-
-1. Open a thread on the [Jellyfin forum](https://forum.jellyfin.org/)  
-   explaining what the plugin does and why it belongs in the official offering.
-2. If accepted, the Jellyfin team will move your repo into the `jellyfin` org.
-3. The CI workflow must be updated to publish to the official release bucket
-   (`repo.jellyfin.org/releases/plugin/...`) — this requires Jellyfin team
-   coordination.
-
-Until then, the third-party repository (above) is the recommended distribution
-path for most plugins.
-
-See also: [Jellyfin Plugin Docs — 3rd-Party Repositories](https://jellyfin.org/docs/general/server/plugins/#3rd-party-plugin-repositories)
+   Then restart Jellyfin. The plugin appears in the Catalog and updates
+   automatically when new releases are tagged.
 
 ## The Monitor (companion tool)
 
