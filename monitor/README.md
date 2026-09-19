@@ -30,7 +30,7 @@ alongside the installed plugin.
 ### Automatic (install script)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/main/monitor/install.sh | sudo bash
+curl -sL https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/master/monitor/install.sh | sudo bash
 ```
 
 Then edit the config:

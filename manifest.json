@@ -5,7 +5,7 @@
   "description": "Resolves .vking files (TMDb/IMDb ID pointers) into Jellyfin media items. Optional Playwright-based extraction of real MP4 URLs from 1Embed.cc for native playback.",
   "overview": "Resolves .vking files into playable media items. Tier 1: optional real MP4 extraction via headless Chromium (native playback for server + apps). Tier 2: stream proxy endpoint for web clients. Tier 3: iframe fallback.",
   "owner": "zoravar08",
-  "imageUrl": "https://raw.githubusercontent.com/zoravar08/jellyfin-vidding-plugin/main/assets/banner.svg",
+  "imageUrl": "https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/master/assets/banner.svg",
   "category": "General",
   "versions": [
    {

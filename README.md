@@ -85,7 +85,7 @@ This is the easiest way for others to install and auto-update the plugin.
 
 4. **Users install** by pasting this URL into Jellyfin:
    **Dashboard → Plugins → Repositories → Add**  
-   `https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/main/manifest.json`
+   `https://raw.githubusercontent.com/zoravar08/jellyfin-vidking-plugin/master/manifest.json`
 
    Then restart Jellyfin. The plugin appears in the Catalog and updates
    automatically when new releases are tagged.
