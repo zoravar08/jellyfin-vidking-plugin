@@ -115,9 +115,12 @@ namespace Jellyfin.Plugin.VidKing
                 startInfo.ArgumentList.Add(tmdbId);
                 startInfo.ArgumentList.Add("--type");
                 startInfo.ArgumentList.Add(isMovie ? "movie" : "tv");
-                // 15s budget per candidate site - the script splits this across bases and
+                // 25s budget per candidate site - the script splits this across bases and
                 // tries each in turn, so more candidates needs proportionally more total time.
-                var perBaseSeconds = 15;
+                // Was 15s: live bcine.ru/cinesrc.st navigations ran 19-21s, so the 4-base
+                // sweep (60s script budget) got hard-killed by the C# timeout mid-navigation
+                // on the last candidate instead of ever finishing (Lucky S01E04, 2026-09-21).
+                var perBaseSeconds = 25;
                 var scriptTimeoutSeconds = perBaseSeconds * Math.Max(bases.Count, 1);
 
                 startInfo.ArgumentList.Add("--timeout");
