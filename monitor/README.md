@@ -12,7 +12,7 @@ alongside the installed plugin.
 
 - Reads all `.vking` items from Jellyfin's `jellyfin.db` (needs read access to
   `/var/lib/jellyfin/data/jellyfin.db`)
-- Sends HTTP HEAD requests with `Referer: https://1embed.cc/` to each
+- Sends HTTP HEAD requests with `Referer: https://cinesrc.st/` to each
   ShortcutPath URL
 - Flags URLs that return non-MP4 content (proxy-status page, HTML, errors)
 - Sends a Telegram alert on failure (configurable)

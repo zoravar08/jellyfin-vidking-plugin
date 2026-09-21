@@ -96,7 +96,7 @@ def probe_url(url: str, timeout: int = 15) -> dict:
         return result
 
     req = urllib.request.Request(url, method="HEAD")
-    req.add_header("Referer", "https://1embed.cc/")
+    req.add_header("Referer", "https://cinesrc.st/")
     req.add_header("User-Agent", "Jellyfin/10.9.0")
     req.add_header("Accept", "*/*")
     req.add_header("Range", "bytes=0-0")

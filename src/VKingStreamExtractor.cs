@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -60,16 +62,24 @@ namespace Jellyfin.Plugin.VidKing
         }
 
         /// <summary>
-        /// Extract a real MP4 URL for the given TMDb id. Returns null when extraction is
-        /// disabled, fails, or the site does not serve a direct MP4.
+        /// Extract a real MP4 URL for the given TMDb id, trying each base in <paramref
+        /// name="bases"/> in order until one yields a direct link. Returns null when
+        /// extraction is disabled, fails, or none of the sites serve a direct MP4.
         ///
-        /// Results are cached per id so re-resolving an item (e.g. config change) does not
-        /// re-launch the browser. For TV episodes the season/episode are passed to the Python
-        /// script so it navigates to the episode-specific embed page.
+        /// Results are cached per id (and per base list, so a config change that adds a
+        /// site is not served a stale miss) so re-resolving an item does not re-launch the
+        /// browser. For TV episodes the season/episode are passed to the Python script so
+        /// it navigates to the episode-specific embed page.
         /// </summary>
-        public async Task<ExtractedResult?> ExtractAsync(string tmdbId, bool isMovie, int? season, int? episode, CancellationToken ct)
+        public async Task<ExtractedResult?> ExtractAsync(
+            string tmdbId, bool isMovie, int? season, int? episode, IReadOnlyList<string> bases, CancellationToken ct)
         {
-            var cacheKey = $"{tmdbId}|{isMovie}";
+            // season/episode matter: without them every episode of a series shares one
+            // cache key, so the second episode extracted in a server's lifetime silently
+            // gets served the first episode's cached URL instead of its own (caught live
+            // testing Zero Day S01E02 - returned S01E01's link in 0.2s, a cache hit, not
+            // a real extraction).
+            var cacheKey = $"{tmdbId}|{isMovie}|{season}|{episode}|{string.Join(",", bases)}";
             if (_cache.TryGetValue(cacheKey, out var cached))
             {
                 return cached;
@@ -85,29 +95,43 @@ namespace Jellyfin.Plugin.VidKing
 
             try
             {
-                var args = new[]
+                _logger.LogInformation("VidKing: launching extractor for {Id} ({Type})", tmdbId, isMovie ? "movie" : "tv");
+
+                var startInfo = new ProcessStartInfo
                 {
-                    _scriptPath,
-                    "--id", tmdbId,
-                    "--type", isMovie ? "movie" : "tv",
-                    "--timeout", "15",
-                    "--season", season?.ToString() ?? "1",
-                    "--episode", episode?.ToString() ?? "1"
+                    FileName = _pythonPath,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = false,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
 
-                _logger.LogInformation("VidKing: launching extractor for {Id} ({Type})", tmdbId, isMovie ? "movie" : "tv");
+                // ArgumentList, not a joined Arguments string: tmdbId comes from .vking file
+                // contents, and a joined string would let an id like "123 --timeout 999"
+                // smuggle extra flags into the Python argparse call. ArgumentList passes each
+                // element through as a single argv entry, no shell/space parsing involved.
+                startInfo.ArgumentList.Add(_scriptPath);
+                startInfo.ArgumentList.Add("--id");
+                startInfo.ArgumentList.Add(tmdbId);
+                startInfo.ArgumentList.Add("--type");
+                startInfo.ArgumentList.Add(isMovie ? "movie" : "tv");
+                // 15s budget per candidate site - the script splits this across bases and
+                // tries each in turn, so more candidates needs proportionally more total time.
+                var perBaseSeconds = 15;
+                var scriptTimeoutSeconds = perBaseSeconds * Math.Max(bases.Count, 1);
+
+                startInfo.ArgumentList.Add("--timeout");
+                startInfo.ArgumentList.Add(scriptTimeoutSeconds.ToString(CultureInfo.InvariantCulture));
+                startInfo.ArgumentList.Add("--season");
+                startInfo.ArgumentList.Add(season?.ToString() ?? "1");
+                startInfo.ArgumentList.Add("--episode");
+                startInfo.ArgumentList.Add(episode?.ToString() ?? "1");
+                startInfo.ArgumentList.Add("--bases");
+                startInfo.ArgumentList.Add(string.Join(",", bases));
 
                 using var process = new Process
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = _pythonPath,
-                        Arguments = string.Join(" ", args),
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = false,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    },
+                    StartInfo = startInfo,
                     EnableRaisingEvents = true
                 };
 
@@ -124,7 +148,10 @@ namespace Jellyfin.Plugin.VidKing
                 process.Start();
                 process.BeginOutputReadLine();
 
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                // Grace buffer over the script's own --timeout for browser launch/teardown,
+                // so the process is killed for genuinely hanging rather than racing the
+                // script's own internal deadline.
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(scriptTimeoutSeconds + 10));
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
 
                 await process.WaitForExitAsync(linked.Token);
@@ -169,8 +196,18 @@ namespace Jellyfin.Plugin.VidKing
                 using var doc = JsonDocument.Parse(output);
                 var root = doc.RootElement;
 
-                var url = root.GetProperty("mp4Url").GetString();
-                if (url is null || !url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                // success:false output has no mp4Url key at all (every source failed) -
+                // TryGetProperty so that's a clean null, not a KeyNotFoundException logged
+                // upstream as "extraction crashed".
+                if (!root.TryGetProperty("mp4Url", out var urlProp))
+                {
+                    return null;
+                }
+
+                var url = urlProp.GetString();
+                if (url is null
+                    || !(url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                        || url.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)))
                 {
                     return null;
                 }

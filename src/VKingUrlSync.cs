@@ -66,6 +66,18 @@ namespace Jellyfin.Plugin.VidKing
         /// </summary>
         public async Task<string> CurrentUrlAsync(Video item, CancellationToken cancellationToken)
         {
+            // A .mp4/.m3u8 ShortcutPath is a real extracted direct link (Tier 1) -
+            // strictly better than anything a base-URL config change could produce, since
+            // the configured base only ever builds an iframe fallback page. Never rebuild
+            // over one, or a config edit (or this same sync running again) would keep
+            // throwing away successful extractions for no gain.
+            if (item.ShortcutPath is not null
+                && (item.ShortcutPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                    || item.ShortcutPath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)))
+            {
+                return item.ShortcutPath;
+            }
+
             string contents;
             try
             {

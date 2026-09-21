@@ -12,7 +12,7 @@
     "changelog": "Initial release. Resolves .vking files. Optional MP4 stream extraction from 1Embed.cc via headless Chromium + Playwright. Stream proxy endpoint for web clients. Iframe fallback.",
     "targetAbi": "10.11.0.0",
     "sourceUrl": "https://github.com/zoravar08/jellyfin-vidking-plugin/releases/download/v1.0.0.0/Jellyfin.Plugin.VidKing_1.0.0.0.zip",
-    "checksum": "8655b9ec5a5bf3630c12466480b20c1250b69b1e4b10e268d2dfb4c68f2f7044",
+    "checksum": "5e1bb4b8cac93c05e8ce5f011964ddd456d0300ae2fbd99c5fe8a06d535f9c4b",
     "timestamp": "2026-09-20T03:00:00Z"
    }
   ]

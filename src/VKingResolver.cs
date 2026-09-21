@@ -104,14 +104,14 @@ namespace Jellyfin.Plugin.VidKing
 
             StampProviderId(movie, target?.Id, args.Path);
 
-            // If Jellyfin already has a valid MP4 ShortcutPath from a prior extraction,
+            // If Jellyfin already has a valid MP4/HLS ShortcutPath from a prior extraction,
             // keep it — don't overwrite with the embed URL, and don't re-extract.
             var existing = ReadExistingShortcutPath(args.Path);
-            if (existing is not null && IsValidMp4Url(existing))
+            if (existing is not null && IsValidMediaUrl(existing))
             {
                 movie.ShortcutPath = existing;
                 _logger.LogInformation(
-                    "VidKing: {Path} preserving existing MP4 ShortcutPath {Existing} (skip re-resolve)",
+                    "VidKing: {Path} preserving existing media ShortcutPath {Existing} (skip re-resolve)",
                     args.Path, existing);
                 return movie;
             }
@@ -145,7 +145,7 @@ namespace Jellyfin.Plugin.VidKing
         /// If the DB has a valid MP4 URL, the resolver preserves it instead of overwriting
         /// with the embed URL on every access.
         /// </summary>
-        private static string? ReadExistingShortcutPath(string path)
+        private string? ReadExistingShortcutPath(string path)
         {
             try
             {
@@ -157,25 +157,31 @@ namespace Jellyfin.Plugin.VidKing
                     "SELECT json_extract(Data, '$.ShortcutPath') FROM BaseItems WHERE Path = ?", conn);
                 cmd.Parameters.AddWithValue("?", path);
                 var raw = cmd.ExecuteScalar() as string;
-                if (raw is not null && raw.StartsWith("http") && raw.Contains(".mp4"))
+                if (raw is not null && raw.StartsWith("http") && (raw.Contains(".mp4") || raw.Contains(".m3u8")))
                     return raw;
             }
             catch (Exception ex)
             {
-                // DB access can fail during startup; silently skip preservation.
-                //_logger.LogWarning("VidKing: could not read existing ShortcutPath for {Path}: {Err}", path, ex.Message);
+                // DB access can fail during startup (e.g. jellyfin.db not yet created) - that's
+                // expected and not worth alarming about, but any other failure here means every
+                // resolve is silently re-extracting instead of reusing a cached MP4, so it's
+                // worth seeing in the log.
+                _logger.LogWarning(ex, "VidKing: could not read existing ShortcutPath for {Path}", path);
             }
             return null;
         }
 
         /// <summary>
-        /// Quick check: does this look like a real MP4 URL (not an embed HTML page)?
+        /// Quick check: does this look like a real direct media URL (MP4 or HLS master
+        /// playlist), not an embed HTML page? Shared with <see cref="VKingController"/>'s
+        /// Extract endpoint, which needs the same "already working, leave it alone" check.
         /// </summary>
-        private static bool IsValidMp4Url(string url)
+        internal static bool IsValidMediaUrl(string url)
         {
             return !string.IsNullOrEmpty(url)
                 && url.StartsWith("http")
-                && url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                && (url.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                    || url.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
                 && !url.Contains("/embed/");
         }
 
@@ -215,6 +221,20 @@ namespace Jellyfin.Plugin.VidKing
                 "VidKing: episode {Path} S{Season}E{Episode} -> {Url}",
                 args.Path, season, episode, url);
 
+            // Same guard as ResolveMovie: a prior extraction already stored a real
+            // MP4/HLS link in the DB, which is strictly better than anything a re-resolve
+            // could produce — don't re-extract (burns ~10-15s per episode on every
+            // rescan) and don't overwrite it with the embed URL.
+            var existing = ReadExistingShortcutPath(args.Path);
+            if (existing is not null && IsValidMediaUrl(existing))
+            {
+                item.ShortcutPath = existing;
+                _logger.LogInformation(
+                    "VidKing: {Path} preserving existing media ShortcutPath {Existing} (skip re-resolve)",
+                    args.Path, existing);
+                return item;
+            }
+
             // Tier 1: try to extract a real MP4 URL.
             if (Plugin.Instance?.Configuration?.EnableStreamExtraction == true)
             {
@@ -232,19 +252,50 @@ namespace Jellyfin.Plugin.VidKing
             return item;
         }
 
-        private async Task<string?> ExtractRealUrlAsync(
-            string argsPath, VKingTarget? target, string baseUrl, bool isMovie,
-            int? season = null, int? episode = null)
+        /// <summary>
+        /// Sites the Python extractor knows how to scrape for a direct MP4 - tried in
+        /// order regardless of the admin's configured base. Confirmed, always-tried
+        /// domains only; "vidsrc.st"/"vidsrc.wiki" substrings in
+        /// <see cref="IsKnownExtractorBase"/> line up with these exactly, but
+        /// "zxcstream"/"zxcprime" have no confirmed domain baked in here, so those only
+        /// get attempted when the admin's own configured base names one (see
+        /// <see cref="ExtractionCandidates"/>).
+        /// </summary>
+        internal static readonly string[] KnownExtractorBases =
         {
-            // Only attempt extraction for known base URLs (vidsrc.wiki / vidsrc.st / 1embed.cc).
-            // If the user configured a custom base, skip extraction.
-            if (!IsKnownExtractorBase(baseUrl))
+            // bcine.ru first: its CDN (kupal.bingey.cfd) isn't IP-reputation-gated, so it
+            // works from the VPS directly, unlike cinesrc.st's nebula CDN which 302s a
+            // VPS IP to a honeypot - no point burning time on that one first.
+            "https://bcine.ru",
+            "https://cinesrc.st",
+            "https://vidsrc.st",
+            "https://vidsrc.wiki",
+        };
+
+        /// <summary>
+        /// Sources to attempt extraction against for this resolve: the confirmed-domain
+        /// list above, plus the admin's configured base when it is itself a known
+        /// extractor-compatible site (covers zxcstream/zxcprime once the admin points
+        /// the config at their real domain). The configured base is otherwise reserved
+        /// for the Tier 3 iframe fallback and never gates whether extraction runs.
+        /// </summary>
+        internal static IReadOnlyList<string> ExtractionCandidates(string configuredBase)
+        {
+            var candidates = new List<string>(KnownExtractorBases);
+            if (!string.IsNullOrWhiteSpace(configuredBase)
+                && IsKnownExtractorBase(configuredBase)
+                && !candidates.Contains(configuredBase, StringComparer.OrdinalIgnoreCase))
             {
-                _logger.LogDebug("VidKing: {Path} base URL {Base} is not a known extractor target, skipping extraction",
-                    argsPath, baseUrl);
-                return null;
+                candidates.Add(configuredBase);
             }
 
+            return candidates;
+        }
+
+        private async Task<string?> ExtractRealUrlAsync(
+            string argsPath, VKingTarget? target, string configuredBase, bool isMovie,
+            int? season = null, int? episode = null)
+        {
             var id = target?.Id;
             if (string.IsNullOrWhiteSpace(id))
             {
@@ -253,7 +304,8 @@ namespace Jellyfin.Plugin.VidKing
 
             try
             {
-                var result = await _extractor.ExtractAsync(id, isMovie, season, episode, CancellationToken.None);
+                var candidates = ExtractionCandidates(configuredBase);
+                var result = await _extractor.ExtractAsync(id, isMovie, season, episode, candidates, CancellationToken.None);
                 if (result?.Mp4Url is not null)
                 {
                     return result.Mp4Url;
@@ -269,9 +321,10 @@ namespace Jellyfin.Plugin.VidKing
 
         internal static bool IsKnownExtractorBase(string baseUrl)
         {
-            return baseUrl.Contains("vidsrc.wiki", StringComparison.OrdinalIgnoreCase)
+            return baseUrl.Contains("bcine.ru", StringComparison.OrdinalIgnoreCase)
+                || baseUrl.Contains("cinesrc.st", StringComparison.OrdinalIgnoreCase)
                 || baseUrl.Contains("vidsrc.st", StringComparison.OrdinalIgnoreCase)
-                || baseUrl.Contains("1embed.cc", StringComparison.OrdinalIgnoreCase)
+                || baseUrl.Contains("vidsrc.wiki", StringComparison.OrdinalIgnoreCase)
                 || baseUrl.Contains("zxcstream", StringComparison.OrdinalIgnoreCase)
                 || baseUrl.Contains("zxcprime", StringComparison.OrdinalIgnoreCase);
         }

@@ -241,6 +241,7 @@ namespace Jellyfin.Plugin.VidKing
                 : null;
 
             long start = 0;
+            long? requestedEnd = null;
             bool hasRange = false;
 
             if (rangeHeader is not null && rangeHeader.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
@@ -255,6 +256,12 @@ namespace Jellyfin.Plugin.VidKing
                     {
                         start = s;
                     }
+
+                    var endStr = rangeBody[(dashPos + 1)..];
+                    if (long.TryParse(endStr, out var e))
+                    {
+                        requestedEnd = e;
+                    }
                 }
             }
 
@@ -264,8 +271,12 @@ namespace Jellyfin.Plugin.VidKing
 
                 if (hasRange)
                 {
-                    // Request a reasonably sized chunk: up to 10 MB from the start position.
-                    var chunkEnd = start + 10L * 1024 * 1024;
+                    // Cap at 10 MB per chunk so one request can't pull the whole file, but
+                    // honor a smaller client-requested end instead of always forcing 10 MB -
+                    // a client asking for a small range (e.g. a moov-atom probe) should get
+                    // back what it asked for, not 10 MB it will discard.
+                    var maxChunkEnd = start + 10L * 1024 * 1024;
+                    var chunkEnd = requestedEnd.HasValue ? Math.Min(requestedEnd.Value, maxChunkEnd) : maxChunkEnd;
                     request.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(start, chunkEnd);
                 }
 
@@ -361,6 +372,19 @@ namespace Jellyfin.Plugin.VidKing
                 return NotFound();
             }
 
+            // Already has a real MP4/HLS link — leave it alone. Unlike ResolveMovie /
+            // ResolveEpisode, this endpoint had no such guard at all: any client call
+            // (e.g. a stale client retrying Extract) would unconditionally re-run the
+            // extractor and overwrite a perfectly working ShortcutPath with whatever the
+            // next extraction happened to return.
+            if (item.ShortcutPath is not null && VKingResolver.IsValidMediaUrl(item.ShortcutPath))
+            {
+                _logger.LogInformation(
+                    "VidKing: on-demand extraction skipped for {Name} ({Id}) — already has a working link {Url}",
+                    item.Name, item.Id, item.ShortcutPath);
+                return new ExtractResult { Ok = true, Url = item.ShortcutPath };
+            }
+
             var config = Plugin.Instance?.Configuration;
             if (config?.EnableStreamExtraction != true)
             {
@@ -377,16 +401,24 @@ namespace Jellyfin.Plugin.VidKing
             }
 
             var isMovie = item is Movie;
-            var baseUrl = isMovie
+            var configuredBase = isMovie
                 ? (config?.MovieBaseUrl ?? string.Empty)
                 : (config?.TvBaseUrl ?? string.Empty);
 
-            if (!VKingResolver.IsKnownExtractorBase(baseUrl))
-            {
-                return new ExtractResult { Ok = false, Error = "Base URL not a known extractor target" };
-            }
+            // season/episode were hardcoded null here, so every on-demand extraction
+            // silently defaulted to S1E1 in the Python script regardless of which episode
+            // was actually asked for (caught live: extracting Zero Day S01E02 returned
+            // S01E01's stream). Jellyfin already resolved this episode's real
+            // season/episode onto the item itself, so read it from there — falling back
+            // to the .vking target's own season/episode only if that's somehow unset.
+            var episodeItem = item as Episode;
+            var season = episodeItem?.ParentIndexNumber ?? target?.Season;
+            var episode = episodeItem?.IndexNumber ?? target?.Episode;
 
-            var result = await _extractor.ExtractAsync(id, isMovie, null, null, cancellationToken).ConfigureAwait(false);
+            // No base-URL gate here either: the configured base is only ever the Tier 3
+            // iframe fallback now. Extraction always tries the known-good sources first.
+            var candidates = VKingResolver.ExtractionCandidates(configuredBase);
+            var result = await _extractor.ExtractAsync(id, isMovie, season, episode, candidates, cancellationToken).ConfigureAwait(false);
 
             if (result?.Mp4Url is not null)
             {

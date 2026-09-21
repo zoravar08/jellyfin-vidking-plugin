@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-VKing Stream Extractor — extracts real MP4 URLs from 1embed.cc.
-Called by Jellyfin C# plugin via subprocess.
+VKing Stream Extractor — extracts real MP4 URLs from a list of vidsrc-family
+embed sites (cinesrc.st, vidsrc.st, vidsrc.wiki, ... — see --bases), trying each
+in order until one yields a direct link. Called by Jellyfin C# plugin via subprocess.
 
 Environment variables (optional):
     VKING_CHROMIUM  — path to chromium executable (auto-detected if unset)
-    VKING_COOKIE_FILE — path to cookie JSON file (default: ./1embed_cookies.json)
+    VKING_COOKIE_FILE — path to cookie JSON file (default: ./cinesrc_cookies.json)
     VKING_PYTHON     — python executable to re-exec into (auto-detected if unset)
 """
 import sys
@@ -13,9 +14,11 @@ import json
 import argparse
 import asyncio
 import os
+import re
 import time
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 # ── Auto-detect paths ──────────────────────────────────────────────
 def _find_chromium() -> str | None:
@@ -102,7 +105,7 @@ def subprocess_run(args: list[str]) -> "subprocess.CompletedProcess[str]":
 # ── Configuration ──────────────────────────────────────────────────
 CHROMIUM = _find_chromium()
 COOKIE_FILE = os.environ.get("VKING_COOKIE_FILE",
-                              str(Path(__file__).parent / "1embed_cookies.json"))
+                              str(Path(__file__).parent / "cinesrc_cookies.json"))
 
 if CHROMIUM is None:
     print("ERROR: Cannot find Chromium. Set VKING_CHROMIUM or install Playwright: "
@@ -127,14 +130,170 @@ from playwright.async_api import async_playwright
 
 extract_lock = asyncio.Lock()
 
+# Movie embeds are `/embed/movie/{id}` everywhere in this vidsrc-clone family,
+# but TV URL shape isn't - cinesrc.st moved to query params, confirmed by curl
+# (path form 404s, query form 200s); vidsrc.st/vidsrc.wiki still use the path
+# form. Keyed by netloc; unlisted sites default to the path form.
+TV_URL_QUERY_PARAM_HOSTS = {"cinesrc.st"}
 
-async def extract_via_browser(browser, tmdb_id, media_type, season, episode, timeout_sec):
-    """Navigate, click play, capture worker MP4 URL."""
+
+def _tv_embed_url(base, tmdb_id, season, episode):
+    host = urlparse(base).netloc
+    if host in TV_URL_QUERY_PARAM_HOSTS:
+        return f"{base}/embed/tv/{tmdb_id}?s={season}&e={episode}"
+    return f"{base}/embed/tv/{tmdb_id}/{season}/{episode}"
+
+
+# bcine.ru isn't a vidsrc-family clone: no /embed/{type}/{id} URL, no uniform
+# play-button selector, and it serves a per-title mix of direct MP4 and HLS
+# (.m3u8) instead of always workers.dev MP4. It gets its own nav/capture flow
+# below (extract_from_bcine) instead of extract_from_base's assumptions.
+BCINE_HOST = "bcine.ru"
+
+
+def _is_bcine(base):
+    return BCINE_HOST in urlparse(base).netloc
+
+
+async def extract_from_bcine(browser, tmdb_id, media_type, season, episode, timeout_sec):
+    """bcine.ru flow: /movie/{id} + "PLAY" click, or /tv/{id} + SEASON/EPISODE
+    expand + season-dropdown select (multi-season only) + episode-row expand
+    + inline "Play" click. Captures the first direct MP4 or HLS master
+    response from the kupal.bingey.cfd CDN.
+    """
     effective = max(timeout_sec - 10, 10)
+    url = f"https://bcine.ru/{'movie' if media_type == 'movie' else 'tv'}/{tmdb_id}"
+
+    ctx = await browser.new_context(viewport={"width": 1280, "height": 900})
+    page = await ctx.new_page()
+
+    media_url = None
+    media_ct = ""
+
+    async def on_resp(resp):
+        nonlocal media_url, media_ct
+        if media_url is not None:
+            return
+        if resp.status not in (200, 206):
+            return
+        u = resp.url
+        if "bingey" not in u and "kupal" not in u:
+            return
+        ct = resp.headers.get("content-type", "")
+        is_mp4 = "video/mp4" in ct
+        is_m3u8 = u.endswith(".m3u8") or "mpegurl" in ct
+        if not (is_mp4 or is_m3u8):
+            return
+        media_url = u
+        media_ct = "application/vnd.apple.mpegurl" if is_m3u8 else ct
+        print(f"CAPTURED: {media_url[:70]}... ct={media_ct}", file=sys.stderr)
+
+    page.on("response", on_resp)
+
+    print(f"Navigating to {url}...", file=sys.stderr)
+    try:
+        resp = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        if resp is None or resp.status != 200:
+            print(f"Page failed: {resp.status if resp else 'None'}", file=sys.stderr)
+            await ctx.close()
+            return None
+    except Exception as e:
+        print(f"Navigation error: {e}", file=sys.stderr)
+        await ctx.close()
+        return None
+
+    await page.wait_for_timeout(2500)
+
+    try:
+        if media_type == "movie":
+            await page.get_by_text("PLAY", exact=True).first.click(timeout=5000)
+        else:
+            season_n = int(season or 1)
+            episode_n = int(episode or 1)
+
+            await page.get_by_text("SEASON/EPISODE", exact=False).first.click(timeout=5000)
+            await page.wait_for_timeout(1200)
+
+            if season_n != 1:
+                # The season dropdown only exists on multi-season shows; a
+                # single-season show has no dropdown, so a failed click here
+                # is expected and not fatal — S1 is already what's listed.
+                try:
+                    await page.get_by_role("button", name=re.compile(r"^Season \d")).first.click(timeout=3000)
+                    await page.wait_for_timeout(500)
+                    await page.get_by_text(f"Season {season_n}", exact=True).first.click(timeout=3000)
+                    await page.wait_for_timeout(1200)
+                except Exception as e:
+                    print(f"season dropdown select failed (single-season show?): {e}", file=sys.stderr)
+
+            # Episode rows are accordion-toggle buttons (thumbnail img +
+            # chevron-down icon); the Nth one is episode N. Expand it, then
+            # click the inline lowercase "Play" revealed inside — the
+            # page-level uppercase "PLAY" always plays the
+            # default/continue-watching episode regardless of row selection.
+            #
+            # The list is client-hydrated after the SEASON/EPISODE panel opens, so a
+            # single fixed wait races the render under load (observed live: Zero Day
+            # found 0 rows at ~1.2s, found all 6 on an immediate solo retest) - poll a
+            # few times instead of trusting one snapshot.
+            el = None
+            for attempt in range(4):
+                ep_btn = await page.evaluate_handle(
+                    """(idx) => {
+                        const btns = Array.from(document.querySelectorAll('button'))
+                            .filter(b => b.querySelector('img') && b.querySelector('svg.lucide-chevron-down'));
+                        return btns[idx] || null;
+                    }""",
+                    episode_n - 1,
+                )
+                el = ep_btn.as_element()
+                if el is not None:
+                    break
+                print(f"episode row {episode_n} not rendered yet (attempt {attempt + 1}/4)", file=sys.stderr)
+                await page.wait_for_timeout(1000)
+
+            if el is None:
+                print(f"episode row {episode_n} not found", file=sys.stderr)
+                await ctx.close()
+                return None
+            await el.scroll_into_view_if_needed()
+            await el.click()
+            await page.wait_for_timeout(1000)
+            await page.get_by_role("button", name="Play", exact=True).first.click(timeout=5000)
+    except Exception as e:
+        print(f"play click failed: {e}", file=sys.stderr)
+        await ctx.close()
+        return None
+
+    deadline = time.time() + effective
+    while time.time() < deadline and media_url is None:
+        await page.wait_for_timeout(500)
+
+    await ctx.close()
+
+    if media_url is None:
+        print("No media URL captured on bcine.ru", file=sys.stderr)
+        return None
+
+    print(f"Done: {media_url[:60]}... ct={media_ct}", file=sys.stderr)
+    return {
+        "mp4Url": media_url,
+        "size": 0,
+        "duration": 0,
+        "content_type": media_ct,
+        "accept_ranges": "bytes",
+        "source": "bcine.ru",
+    }
+
+
+async def extract_from_base(browser, base, tmdb_id, media_type, season, episode, timeout_sec):
+    """Navigate to one embed site, click play, capture its worker MP4 URL."""
+    effective = max(timeout_sec - 10, 10)
+    base = base.rstrip("/")
     url = (
-        f"https://1embed.cc/embed/movie/{tmdb_id}"
+        f"{base}/embed/movie/{tmdb_id}"
         if media_type == "movie"
-        else f"https://1embed.cc/embed/tv/{tmdb_id}/{season}/{episode}"
+        else _tv_embed_url(base, tmdb_id, season, episode)
     )
 
     ctx = await browser.new_context(
@@ -258,12 +417,13 @@ async def extract_via_browser(browser, tmdb_id, media_type, season, episode, tim
         "duration": duration,
         "content_type": mp4_ct,
         "accept_ranges": "bytes",
-        "source": "1embed",
+        "source": urlparse(base).netloc,
     }
 
 
-async def extract_async(tmdb_id, media_type, season, episode, timeout_sec):
-    print(f"Extracting {media_type} {tmdb_id} (timeout={timeout_sec}s)",
+async def extract_async(tmdb_id, media_type, season, episode, timeout_sec, bases):
+    """Try each base in order, same browser instance, stop at the first MP4 capture."""
+    print(f"Extracting {media_type} {tmdb_id} (timeout={timeout_sec}s, bases={bases})",
           file=sys.stderr)
     browser = None
     try:
@@ -272,10 +432,23 @@ async def extract_async(tmdb_id, media_type, season, episode, timeout_sec):
                 headless=True,
                 executable_path=CHROMIUM,
             )
-            result = await extract_via_browser(
-                browser, tmdb_id, media_type, season, episode, timeout_sec
-            )
-            return result
+            # Split the overall timeout across candidates so a slow/dead first source
+            # doesn't eat the whole budget and starve the rest.
+            per_base_timeout = max(timeout_sec // max(len(bases), 1), 10)
+            for i, base in enumerate(bases):
+                print(f"--- Source {i + 1}/{len(bases)}: {base} ---", file=sys.stderr)
+                result = (
+                    await extract_from_bcine(
+                        browser, tmdb_id, media_type, season, episode, per_base_timeout
+                    )
+                    if _is_bcine(base)
+                    else await extract_from_base(
+                        browser, base, tmdb_id, media_type, season, episode, per_base_timeout
+                    )
+                )
+                if result:
+                    return result
+            return None
     except Exception as e:
         print(f"Playwright error: {e}", file=sys.stderr)
         return None
@@ -294,10 +467,14 @@ def main():
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument("--season", default="1")
     parser.add_argument("--episode", default="1")
+    parser.add_argument("--bases", default="https://cinesrc.st",
+                         help="comma-separated embed sites to try in order")
     args = parser.parse_args()
 
+    bases = [b.strip() for b in args.bases.split(",") if b.strip()]
+
     result = asyncio.run(
-        extract_async(args.id, args.type, args.season, args.episode, args.timeout)
+        extract_async(args.id, args.type, args.season, args.episode, args.timeout, bases)
     )
 
     output = {"id": args.id, "type": args.type, "success": False}

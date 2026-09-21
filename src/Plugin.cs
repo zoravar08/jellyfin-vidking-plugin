@@ -19,10 +19,10 @@ namespace Jellyfin.Plugin.VidKing
         public string ApiKey { get; set; } = string.Empty;
 
         /// <summary>Base URL for movie ids: &lt;base&gt;/embed/movie/&lt;id&gt;.</summary>
-        public string MovieBaseUrl { get; set; } = "https://vidking.example";
+        public string MovieBaseUrl { get; set; } = "https://cinesrc.st";
 
         /// <summary>Base URL for series ids: &lt;base&gt;/embed/tv/&lt;id&gt;/&lt;season&gt;/&lt;episode&gt;.</summary>
-        public string TvBaseUrl { get; set; } = "https://vidking.example";
+        public string TvBaseUrl { get; set; } = "https://cinesrc.st";
 
         /// <summary>
         /// When true, the resolver attempts to extract a real MP4 stream URL (Option B) from
@@ -103,13 +103,33 @@ namespace Jellyfin.Plugin.VidKing
             return string.Concat(baseUrl.TrimEnd('/'), "/embed/movie/", Uri.EscapeDataString(id));
         }
 
-        /// <summary>Episode form: &lt;base&gt;/embed/tv/&lt;id&gt;/&lt;season&gt;/&lt;episode&gt;.</summary>
+        /// <summary>
+        /// Sites in the vidsrc-clone family that need the TV episode as query params
+        /// (?s=&amp;e=) instead of path segments - cinesrc.st moved to this format,
+        /// confirmed by curl (path form 404s, query form 200s). Keep in sync with
+        /// TV_URL_QUERY_PARAM_HOSTS in VKingStreamExtractor.py.
+        /// </summary>
+        private static readonly string[] QueryParamEpisodeHosts = { "cinesrc.st" };
+
+        /// <summary>Episode form: path segments normally, query params for sites that need it.</summary>
         public static string BuildEpisode(string baseUrl, string id, int season, int episode)
         {
+            var trimmed = baseUrl.TrimEnd('/');
+            var encodedId = Uri.EscapeDataString(id);
+            var host = Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) ? uri.Host : string.Empty;
+
+            if (Array.Exists(QueryParamEpisodeHosts, h => string.Equals(h, host, StringComparison.OrdinalIgnoreCase)))
+            {
+                return string.Concat(
+                    trimmed, "/embed/tv/", encodedId,
+                    "?s=", season.ToString(CultureInfo.InvariantCulture),
+                    "&e=", episode.ToString(CultureInfo.InvariantCulture));
+            }
+
             return string.Concat(
-                baseUrl.TrimEnd('/'),
+                trimmed,
                 "/embed/tv/",
-                Uri.EscapeDataString(id),
+                encodedId,
                 "/",
                 season.ToString(CultureInfo.InvariantCulture),
                 "/",
